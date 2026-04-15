@@ -548,7 +548,9 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       timeout: sdkTimeout,
       runtime,
       persistent,
-      networkPolicy: buildGitHubCredentialBrokeringPolicy(githubToken),
+      ...(githubToken
+        ? { networkPolicy: buildGitHubCredentialBrokeringPolicy(githubToken) }
+        : {}),
       ...(ports && { ports }),
       ...(snapshotExpiration !== undefined && { snapshotExpiration }),
     };
@@ -567,10 +569,10 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
           "[VercelSandbox] Network policy transformations are unavailable on this Vercel plan; retrying without GitHub credential brokering.",
         );
 
-        return VercelSandboxSDK.create({
-          ...request,
-          networkPolicy: DEFAULT_NETWORK_POLICY,
-        });
+        const { networkPolicy: _networkPolicy, ...requestWithoutNetworkPolicy } =
+          request;
+
+        return VercelSandboxSDK.create(requestWithoutNetworkPolicy);
       }
     };
 
