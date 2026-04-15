@@ -94,6 +94,36 @@ function buildCreateConfig(
   };
 }
 
+function omitBaseSnapshot(options?: ConnectOptions): ConnectOptions | undefined {
+  if (!options?.baseSnapshotId) {
+    return options;
+  }
+
+  const { baseSnapshotId: _baseSnapshotId, ...rest } = options;
+  return rest;
+}
+
+async function createSandboxWithBaseSnapshotFallback(
+  state: VercelState,
+  options?: ConnectOptions,
+): Promise<Sandbox> {
+  try {
+    return await VercelSandbox.create(buildCreateConfig(state, options));
+  } catch (error) {
+    if (!options?.baseSnapshotId || !isSandboxNotFoundError(error)) {
+      throw error;
+    }
+
+    console.warn(
+      `[VercelSandbox] Base snapshot ${options.baseSnapshotId} was not found; retrying without a base snapshot.`,
+    );
+
+    return VercelSandbox.create(
+      buildCreateConfig(state, omitBaseSnapshot(options)),
+    );
+  }
+}
+
 async function connectNamedSandbox(
   state: VercelState,
   options?: ConnectOptions,
@@ -120,7 +150,7 @@ async function connectNamedSandbox(
     }
   }
 
-  return VercelSandbox.create(buildCreateConfig(state, options));
+  return createSandboxWithBaseSnapshotFallback(state, options);
 }
 
 /**
@@ -141,5 +171,5 @@ export async function connectVercel(
     return connectNamedSandbox(state, options);
   }
 
-  return VercelSandbox.create(buildCreateConfig(state, options));
+  return createSandboxWithBaseSnapshotFallback(state, options);
 }
