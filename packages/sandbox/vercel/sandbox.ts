@@ -41,6 +41,16 @@ const DEFAULT_NETWORK_POLICY: SandboxNetworkPolicy = {
   },
 };
 
+function isUnsupportedNetworkPolicyTransformError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  return (
+    message.includes("network policy transformations") ||
+    (message.includes("status code 402") && message.includes("payment required"))
+  );
+}
+
 function buildGitHubCredentialBrokeringPolicy(
   token?: string,
 ): SandboxNetworkPolicy {
@@ -101,10 +111,20 @@ async function syncGitHubCredentialBrokering(
     return;
   }
 
-  await updateNetworkPolicy.call(
-    sdk,
-    buildGitHubCredentialBrokeringPolicy(token),
-  );
+  try {
+    await updateNetworkPolicy.call(
+      sdk,
+      buildGitHubCredentialBrokeringPolicy(token),
+    );
+  } catch (error) {
+    if (!token || !isUnsupportedNetworkPolicyTransformError(error)) {
+      throw error;
+    }
+
+    console.warn(
+      "[VercelSandbox] Network policy transformations are unavailable on this Vercel plan; continuing without GitHub credential brokering.",
+    );
+  }
 }
 
 function buildAuthenticatedGitHubUrl(
@@ -533,19 +553,40 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       ...(snapshotExpiration !== undefined && { snapshotExpiration }),
     };
 
+    const createSdk = async (
+      request: NonNullable<Parameters<typeof VercelSandboxSDK.create>[0]>,
+    ) => {
+      try {
+        return await VercelSandboxSDK.create(request);
+      } catch (error) {
+        if (!githubToken || !isUnsupportedNetworkPolicyTransformError(error)) {
+          throw error;
+        }
+
+        console.warn(
+          "[VercelSandbox] Network policy transformations are unavailable on this Vercel plan; retrying without GitHub credential brokering.",
+        );
+
+        return VercelSandboxSDK.create({
+          ...request,
+          networkPolicy: DEFAULT_NETWORK_POLICY,
+        });
+      }
+    };
+
     let sdk: VercelSandboxSDK;
     if (restoreSnapshotId) {
-      sdk = await VercelSandboxSDK.create({
+      sdk = await createSdk({
         ...createBaseConfig,
         source: { type: "snapshot", snapshotId: restoreSnapshotId },
       });
     } else if (baseSnapshotId) {
-      sdk = await VercelSandboxSDK.create({
+      sdk = await createSdk({
         ...createBaseConfig,
         source: { type: "snapshot", snapshotId: baseSnapshotId },
       });
     } else if (source) {
-      sdk = await VercelSandboxSDK.create({
+      sdk = await createSdk({
         ...createBaseConfig,
         source: source.token
           ? {
@@ -562,7 +603,7 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
             },
       });
     } else {
-      sdk = await VercelSandboxSDK.create(createBaseConfig);
+      sdk = await createSdk(createBaseConfig);
     }
 
     const workingDirectory = DEFAULT_WORKING_DIRECTORY;
