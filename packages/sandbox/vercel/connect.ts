@@ -67,14 +67,13 @@ function buildCreateConfig(
           source: {
             url: state.source.repo,
             branch: state.source.branch,
-            token: state.source.token,
+            token: state.source.token ?? options?.githubToken,
             newBranch: state.source.newBranch,
           },
         }
       : {}),
     ...(state.snapshotId ? { restoreSnapshotId: state.snapshotId } : {}),
     env: options?.env,
-    githubToken: options?.githubToken,
     gitUser: options?.gitUser,
     hooks: options?.hooks,
     ...(options?.timeout !== undefined && { timeout: options.timeout }),
