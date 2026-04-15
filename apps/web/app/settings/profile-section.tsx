@@ -1,6 +1,11 @@
 "use client";
 
-import Image from "next/image";
+import useSWR from "swr";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import {
   Card,
   CardContent,
@@ -11,6 +16,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/use-session";
+import { fetcherNoStore } from "@/lib/swr";
 
 export function ProfileSectionSkeleton() {
   return (
@@ -49,8 +55,22 @@ export function ProfileSectionSkeleton() {
   );
 }
 
+interface GitHubUserProfile {
+  login: string;
+  avatar_url: string;
+}
+
+function getInitials(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.charAt(0).toUpperCase() : "?";
+}
+
 export function ProfileSection() {
-  const { session, loading } = useSession();
+  const { session, loading, hasGitHub } = useSession();
+  const { data: githubUser } = useSWR<GitHubUserProfile>(
+    hasGitHub ? "/api/github/user" : null,
+    fetcherNoStore,
+  );
 
   if (loading) {
     return <ProfileSectionSkeleton />;
@@ -59,6 +79,9 @@ export function ProfileSection() {
   if (!session?.user) {
     return null;
   }
+
+  const avatarSrc = githubUser?.avatar_url || session.user.avatar;
+  const displayName = session.user.name ?? githubUser?.login ?? session.user.username;
 
   return (
     <Card>
@@ -70,19 +93,12 @@ export function ProfileSection() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-4">
-          {session.user.avatar && (
-            <Image
-              src={session.user.avatar}
-              alt={session.user.username}
-              width={64}
-              height={64}
-              className="rounded-full"
-            />
-          )}
+          <Avatar className="size-16">
+            {avatarSrc ? <AvatarImage src={avatarSrc} alt={session.user.username} /> : null}
+            <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
+          </Avatar>
           <div>
-            <p className="font-medium">
-              {session.user.name ?? session.user.username}
-            </p>
+            <p className="font-medium">{displayName}</p>
             <p className="text-sm text-muted-foreground">
               @{session.user.username}
             </p>
